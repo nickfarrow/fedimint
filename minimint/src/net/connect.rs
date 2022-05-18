@@ -1,5 +1,5 @@
 use crate::config::ServerConfig;
-use crate::net::framed::Framed;
+use crate::net::framed::TcpBidiFramed;
 use crate::net::PeerConnections;
 use async_trait::async_trait;
 use futures::future::select_all;
@@ -16,12 +16,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
 use tokio::time::sleep;
-use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 use tracing::{debug, error, info, trace};
 
 // FIXME: make connections dynamically managed
 pub struct Connections<T> {
-    connections: HashMap<PeerId, Framed<Compat<TcpStream>, T>>,
+    connections: HashMap<PeerId, TcpBidiFramed<T>>,
 }
 
 impl<T: 'static> Connections<T>
@@ -69,7 +68,7 @@ where
             .await
             .expect("Error during peer handshakes")
             .into_iter()
-            .map(|(id, stream)| (id, Framed::new(stream.compat())))
+            .map(|(id, stream)| (id, TcpBidiFramed::new_from_tcp(stream)))
             .collect::<HashMap<_, _>>();
 
         info!("Successfully connected to all peers");
@@ -104,7 +103,7 @@ where
         res
     }
 
-    async fn receive_from_peer(id: PeerId, peer: &mut Framed<Compat<TcpStream>, T>) -> (PeerId, T) {
+    async fn receive_from_peer(id: PeerId, peer: &mut TcpBidiFramed<T>) -> (PeerId, T) {
         let msg = peer
             .next()
             .await
@@ -120,7 +119,7 @@ where
 #[async_trait]
 impl<T> PeerConnections<T> for Connections<T>
 where
-    T: Serialize + DeserializeOwned + Unpin + Send + Sync + 'static,
+    T: Serialize + DeserializeOwned + Clone + Unpin + Send + Sync + 'static,
 {
     type Id = PeerId;
 
@@ -129,14 +128,14 @@ where
         match target {
             Target::All => {
                 for peer in self.connections.values_mut() {
-                    peer.send(&msg)
+                    peer.send(msg.clone())
                         .await
                         .expect("Failed to send message to peer");
                 }
             }
             Target::Node(peer_id) => {
                 let peer = self.connections.get_mut(&peer_id).expect("Unknown peer");
-                peer.send(&msg)
+                peer.send(msg)
                     .await
                     .expect("Failed to send message to peer");
             }

@@ -1682,6 +1682,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "bitcoin",
+ "bytes",
  "futures",
  "hbbft",
  "hex",
@@ -3279,7 +3280,6 @@ checksum = "9e99e1983e5d376cd8eb4b66604d2e99e79f5bd988c3055891dcd8c9e2604cc0"
 dependencies = [
  "bytes",
  "futures-core",
- "futures-io",
  "futures-sink",
  "log",
  "pin-project-lite 0.2.8",
