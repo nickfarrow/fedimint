@@ -437,7 +437,7 @@ impl FederationModule for Wallet {
                             None,
                         )
                         .public,
-                );
+                )
             })
             .collect::<Vec<_>>();
         batch.append_insert_new(UnsignedTransactionKey(txid), tx);
@@ -472,7 +472,7 @@ impl FederationModule for Wallet {
             let peers_who_provided_nonces = tx
                 .nonces
                 .iter()
-                .map(|(peer, _)| *peer)
+                .map(|(peer, _)| *peer) // TODO check nonces have the right length ()
                 .collect::<HashSet<_>>();
 
             for peer in consensus_peers.sub(&peers_who_provided_nonces) {
@@ -481,11 +481,31 @@ impl FederationModule for Wallet {
             }
         }
 
-        for (_, tx) in &txs_with_signature_shares {
+        for (txid, tx) in &txs_with_signature_shares {
             let peers_who_provided_signatures = tx
                 .signatures
                 .iter()
-                .map(|(peer, _)| *peer)
+                .filter_map(|(peer, signatures)| {
+                    for input_index in 0..tx.psbt.inputs.len() {
+                        let (sign_session, frost_key) = self.create_sign_session(&tx, input_index);
+                        let frost_instance = frost::new_frost();
+                        if !frost_instance.verify_signature_share(
+                            &frost_key,
+                            &sign_session,
+                            peer.to_usize() as u32,
+                            signatures.signatures.get(input_index)?.0,
+                        ) {
+                            warn!(
+                                "signature share for tx {} input index {} was invalid from peer {}",
+                                txid.0,
+                                input_index,
+                                peer.to_usize()
+                            );
+                            return None;
+                        }
+                    }
+                    Some(*peer)
+                })
                 .collect::<HashSet<_>>();
 
             for peer in consensus_peers.sub(&peers_who_provided_signatures) {
@@ -526,6 +546,7 @@ impl FederationModule for Wallet {
                     tx_secret_shares.push(frost::FrostSigShare(signature_share_for_input));
                 }
 
+                // Guessing that we can insert without delete
                 batch.append_insert(txid.clone(), tx);
                 batch.append_delete(PegOutTxNonceCI(txid.0));
                 batch.append_insert(PegOutTxSignatureCI(txid.0), tx_secret_shares);
@@ -911,7 +932,7 @@ impl Wallet {
         input_index: usize,
     ) -> (frost::SignSession, frost::XOnlyFrostKey) {
         let frost_instance = frost::new_frost();
-        let mut frost_key = self.cfg.frost_key.clone();
+        let frost_key = self.cfg.frost_key.clone();
 
         let tweak_pk_bytes = tx.psbt.inputs[input_index]
             .proprietary
