@@ -1,6 +1,4 @@
-use crate::tweakable::{Contract, Tweakable};
 use bitcoin::hashes::Hash;
-use bitcoin::secp256k1::{Secp256k1, Verification};
 use bitcoin::PublicKey;
 use miniscript::{MiniscriptKey, ToPublicKey};
 use serde::{Deserialize, Serialize};
@@ -58,13 +56,13 @@ impl FromStr for CompressedPublicKey {
     }
 }
 
-impl Tweakable for CompressedPublicKey {
-    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
-        CompressedPublicKey {
-            key: self.key.tweak(tweak, secp),
-        }
-    }
-}
+// impl Tweakable for CompressedPublicKey {
+//     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+//         CompressedPublicKey {
+//             key: self.key.tweak(tweak, secp),
+//         }
+//     }
+// }
 
 impl From<CompressedPublicKey> for bitcoin::PublicKey {
     fn from(key: CompressedPublicKey) -> Self {

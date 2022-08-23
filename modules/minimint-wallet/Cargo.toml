@@ -23,12 +23,17 @@ minimint-api = { path = "../../minimint-api" }
 minimint-derive = { path = "../../minimint-derive" }
 miniscript = { version = "7.0.0", features = [ "compiler", "use-serde" ] }
 rand = "0.6.0"
+rand_2 = {version = "0.8.0", package = "rand" }
 secp256k1 = { version = "0.22.1", features = [ "serde" ] }
 serde = { version = "1.0.118", features = [ "derive" ] }
 thiserror = "1.0.23"
 tokio = { version = "1.0.1", features = ["sync"], optional = true }
 tracing ="0.1.22"
 validator = { version = "0.13", features = ["derive"] }
+# schnorr_fun = { path = "/home/nick/repos/secp256kfun/schnorr_fun", features = ["serde", "libsecp_compat"]}
+schnorr_fun = { git = "https://github.com/nickfarrow/secp256kfun", rev = "14e9539ec39b7dd7f7b341075c6d59fb10c0b719", features = ["serde", "libsecp_compat"]}
+sha2 = "0.9"
+
 
 [dev-dependencies]
 test-log = { version = "0.2", features = [ "trace" ], default-features = false }

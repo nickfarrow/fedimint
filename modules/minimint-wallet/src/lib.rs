@@ -7,11 +7,12 @@ use std::sync::Arc;
 use crate::bitcoind::BitcoindRpc;
 use crate::config::WalletConfig;
 use crate::db::{
-    BlockHashKey, PegOutTxSignatureCI, PegOutTxSignatureCIPrefix, PendingTransactionKey,
-    PendingTransactionPrefixKey, RoundConsensusKey, UTXOKey, UTXOPrefixKey, UnsignedTransactionKey,
-    UnsignedTransactionPrefixKey,
+    BlockHashKey, PegOutTxNonceCI, PegOutTxSignatureCI, PegOutTxSignatureCIPrefix,
+    PendingTransactionKey, PendingTransactionPrefixKey, RoundConsensusKey, UTXOKey, UTXOPrefixKey,
+    UnsignedTransactionKey, UnsignedTransactionPrefixKey,
 };
-use crate::keys::CompressedPublicKey;
+use std::hash::Hash;
+
 use crate::tweakable::Tweakable;
 use crate::txoproof::{PegInProof, PegInProofError};
 use async_trait::async_trait;
@@ -21,10 +22,12 @@ use bitcoin::util::psbt::raw::ProprietaryKey;
 use bitcoin::util::psbt::{Input, PartiallySignedTransaction};
 use bitcoin::util::sighash::SighashCache;
 use bitcoin::{
-    Address, AddressType, Amount, BlockHash, EcdsaSig, EcdsaSighashType, Network, Script,
-    Transaction, TxIn, TxOut, Txid,
+    Address, AddressType, Amount, BlockHash, Network, Script, Transaction, TxIn, TxOut, Txid,
+    XOnlyPublicKey,
 };
-use minimint_api::db::batch::{BatchItem, BatchTx};
+use db::PegOutTxNonceCIPrefix;
+use frost::{FrostNonce, FrostSigShare};
+use minimint_api::db::batch::BatchTx;
 use minimint_api::db::Database;
 use minimint_api::encoding::{Decodable, Encodable};
 use minimint_api::module::api_endpoint;
@@ -33,9 +36,8 @@ use minimint_api::module::ApiEndpoint;
 use minimint_api::{FederationModule, InputMeta, OutPoint, PeerId};
 use minimint_derive::UnzipConsensus;
 use miniscript::psbt::PsbtExt;
-use miniscript::{Descriptor, DescriptorTrait, TranslatePk2};
+use miniscript::{Descriptor, DescriptorTrait, TranslatePk3};
 use rand::{CryptoRng, Rng, RngCore};
-use secp256k1::Message;
 use serde::{Deserialize, Serialize};
 use std::ops::Sub;
 
@@ -48,6 +50,7 @@ use tracing::{debug, error, info, instrument, trace, warn};
 pub mod bitcoind;
 pub mod config;
 pub mod db;
+pub mod frost;
 pub mod keys;
 pub mod tweakable;
 pub mod txoproof;
@@ -59,13 +62,14 @@ pub const CONFIRMATION_TARGET: u16 = 10;
 
 pub type PartialSig = Vec<u8>;
 
-pub type PegInDescriptor = Descriptor<CompressedPublicKey>;
+pub type PegInDescriptor = Descriptor<XOnlyPublicKey>;
 
 #[derive(
     Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, UnzipConsensus, Encodable, Decodable,
 )]
 pub enum WalletConsensusItem {
     RoundConsensus(RoundConsensusItem),
+    PegOutNonce(PegOutNonceItem),
     PegOutSignature(PegOutSignatureItem),
 }
 
@@ -79,7 +83,14 @@ pub struct RoundConsensusItem {
 #[derive(Clone, Debug, Serialize, Deserialize, Encodable, Decodable)]
 pub struct PegOutSignatureItem {
     pub txid: Txid,
-    pub signature: Vec<secp256k1::ecdsa::Signature>,
+    // Change to signature shares of FROST
+    pub signature: Vec<FrostSigShare>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, Hash, Deserialize, Encodable, Decodable)]
+pub struct PegOutNonceItem {
+    pub txid: Txid,
+    pub nonces: Vec<FrostNonce>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encodable, Decodable)]
@@ -115,14 +126,15 @@ pub struct PendingTransaction {
 #[derive(Clone, Debug, Encodable, Decodable)]
 pub struct UnsignedTransaction {
     pub psbt: PartiallySignedTransaction,
+    pub nonces: Vec<(PeerId, PegOutNonceItem)>,
     pub signatures: Vec<(PeerId, PegOutSignatureItem)>,
     pub change: bitcoin::Amount,
     pub fees: PegOutFees,
 }
 
 struct StatelessWallet<'a> {
-    descriptor: &'a Descriptor<CompressedPublicKey>,
-    secret_key: &'a secp256k1::SecretKey,
+    descriptor: &'a Descriptor<XOnlyPublicKey>,
+    secret_key: &'a frost::Scalar,
     secp: &'a secp256k1::Secp256k1<secp256k1::All>,
 }
 
@@ -220,16 +232,28 @@ impl FederationModule for Wallet {
             randomness: rng.gen(),
         });
 
-        self.db
+        let nonce_proposals = self.db.find_by_prefix(&PegOutTxNonceCIPrefix).map(|res| {
+            let (key, nonces) = res.expect("FB error");
+            WalletConsensusItem::PegOutNonce(PegOutNonceItem {
+                txid: key.0,
+                nonces,
+            })
+        });
+
+        let signature_proposals = self
+            .db
             .find_by_prefix(&PegOutTxSignatureCIPrefix)
             .map(|res| {
-                let (key, val) = res.expect("FB error");
+                let (key, signatures) = res.expect("FB error");
                 WalletConsensusItem::PegOutSignature(PegOutSignatureItem {
                     txid: key.0,
-                    signature: val,
+                    signature: signatures,
                 })
-            })
+            });
+
+        signature_proposals
             .chain(std::iter::once(round_ci))
+            .chain(nonce_proposals)
             .collect()
     }
 
@@ -244,12 +268,13 @@ impl FederationModule for Wallet {
         // Separate round consensus items from signatures for peg-out tx. While signatures can be
         // processed separately, all round consensus items need to be available at once.
         let UnzipWalletConsensusItem {
+            peg_out_nonce,
             peg_out_signature: peg_out_signatures,
             round_consensus,
         } = consensus_items.into_iter().unzip_wallet_consensus_item();
 
-        // Save signatures to the database
-        self.save_peg_out_signatures(batch.subtransaction(), peg_out_signatures);
+        // Save nonces and signatures to the database
+        self.save_peg_out_signatures(batch.subtransaction(), peg_out_nonce, peg_out_signatures);
 
         // FIXME: also warn on less than 1/3, that should never happen
         // Make sure we have enough contributions to continue
@@ -300,7 +325,7 @@ impl FederationModule for Wallet {
             return Err(WalletError::UnknownPegInProofBlock(input.proof_block()));
         }
 
-        input.verify(&self.secp, &self.cfg.peg_in_descriptor)?;
+        // input.verify(&self.secp, &self.cfg.peg_in_descriptor)?;
 
         if self
             .db
@@ -374,53 +399,65 @@ impl FederationModule for Wallet {
             "Queuing peg-out",
         );
 
-        let mut tx = self
+        let tx = self
             .create_peg_out_tx(output)
             .expect("Should have been validated");
-        self.offline_wallet().sign_psbt(&mut tx.psbt);
         let txid = tx.psbt.unsigned_tx.txid();
         info!(
             %txid,
-            "Signing peg out",
+            "generating nonces for peg out",
         );
 
-        let sigs = tx
-            .psbt
-            .inputs
-            .iter_mut()
-            .map(|input| {
-                assert_eq!(
-                    input.partial_sigs.len(),
-                    1,
-                    "There was already more than one (our) or no signatures in input"
-                );
+        // let sigs = tx
+        //     .psbt
+        //     .inputs
+        //     .iter_mut()
+        //     .map(|input| {
+        //         assert_eq!(
+        //             input.partial_sigs.len(),
+        //             1,
+        //             "There was already more than one (our) or no signatures in input"
+        //         );
 
-                // TODO: don't put sig into PSBT in the first place
-                // We actually take out our own signature so everyone finalizes the tx in the
-                // same epoch.
-                let sig = std::mem::take(&mut input.partial_sigs)
-                    .into_values()
-                    .next()
-                    .expect("asserted previously");
+        //         // TODO: don't put sig into PSBT in the first place
+        //         // We actually take out our own signature so everyone finalizes the tx in the
+        //         // same epoch.
+        //         let sig = std::mem::take(&mut input.partial_sigs)
+        //             .into_values()
+        //             .next()
+        //             .expect("asserted previously");
 
-                // We drop SIGHASH_ALL, because we always use that and it is only present in the
-                // PSBT for compatibility with other tools.
-                secp256k1::ecdsa::Signature::from_der(&sig.to_vec()[..sig.to_vec().len() - 1])
-                    .expect("we serialized it ourselves that way")
-            })
-            .collect::<Vec<_>>();
+        //         // We drop SIGHASH_ALL, because we always use that and it is only present in the
+        //         // PSBT for compatibility with other tools.
+        //         secp256k1::ecdsa::Signature::from_der(&sig.to_vec()[..sig.to_vec().len() - 1])
+        //             .expect("we serialized it ourselves that way")
+        //     })
+        //     .collect::<Vec<_>>();
 
-        // Delete used UTXOs
-        batch.append_from_iter(
-            tx.psbt
-                .unsigned_tx
-                .input
-                .iter()
-                .map(|input| BatchItem::delete(UTXOKey(input.previous_output))),
+        // // Delete used UTXOs
+        // batch.append_from_iter(
+        //     tx.psbt
+        //         .unsigned_tx
+        //         .input
+        //         .iter()
+        //         .map(|input| BatchItem::delete(UTXOKey(input.previous_output))),
+        // );
+
+        let frost_instance = frost::new_frost();
+
+        // TODO MAKE SURE UNIQUE/NONREUSED
+        let nonce_kp = frost_instance.gen_nonce(
+            &self.cfg.peg_in_key,
+            &txid[..],
+            // Some(self.cfg.frost_key.public_key()),
+            None,
+            None,
         );
+
+        let pub_nonce = vec![frost::FrostNonce(nonce_kp.public)];
 
         batch.append_insert_new(UnsignedTransactionKey(txid), tx);
-        batch.append_insert_new(PegOutTxSignatureCI(txid), sigs);
+        batch.append_insert_new(PegOutTxNonceCI(txid), pub_nonce);
         batch.commit();
         Ok(amount)
     }
@@ -445,8 +482,30 @@ impl FederationModule for Wallet {
                 mut psbt,
                 signatures,
                 change,
+                nonces,
                 ..
             } = unsigned;
+
+            // sign if all nonces exist
+            if nonces.len() == consensus_peers.len() {
+                // sign if our signature not present
+                // if !signatures
+                //     .iter()
+                //     .map(|(peer_id, _)| peer_id)
+                //     .contains(my_peer_id)
+                // {
+                //     let frost_instance = frost::new_frost();
+                //     let nonce_kp = frost_instance.gen_nonce(
+                //         &self.cfg.peg_in_key,
+                //         &txid[..],
+                //         // Some(self.cfg.frost_key.public_key()),
+                //         None,
+                //         None,
+                //     );
+                // }
+            }
+            // validate signature shares
+            // combine signature shares
 
             let signers: HashSet<PeerId> = signatures
                 .iter()
@@ -576,6 +635,7 @@ impl Wallet {
     fn save_peg_out_signatures(
         &self,
         mut batch: BatchTx,
+        nonces: Vec<(PeerId, PegOutNonceItem)>,
         signatures: Vec<(PeerId, PegOutSignatureItem)>,
     ) {
         let mut cache: BTreeMap<Txid, UnsignedTransaction> = self
@@ -586,6 +646,16 @@ impl Wallet {
                 (key.0, val)
             })
             .collect();
+
+        for (peer, nonce) in nonces.into_iter() {
+            match cache.get_mut(&nonce.txid) {
+                Some(unsigned) => unsigned.nonces.push((peer, nonce)),
+                None => warn!(
+                    "{} sent peg-out nonce for unknown PSBT {}",
+                    peer, nonce.txid
+                ),
+            }
+        }
 
         for (peer, sig) in signatures.into_iter() {
             match cache.get_mut(&sig.txid) {
@@ -610,63 +680,85 @@ impl Wallet {
         peer: &PeerId,
         signature: &PegOutSignatureItem,
     ) -> Result<(), ProcessPegOutSigError> {
-        let peer_key = self
-            .cfg
-            .peer_peg_in_keys
-            .get(peer)
-            .expect("always called with valid peer id");
-
-        if psbt.inputs.len() != signature.signature.len() {
-            return Err(ProcessPegOutSigError::WrongSignatureCount(
-                psbt.inputs.len(),
-                signature.signature.len(),
-            ));
-        }
-
-        let mut tx_hasher = SighashCache::new(&psbt.unsigned_tx);
         for (idx, (input, signature)) in psbt
             .inputs
             .iter_mut()
             .zip(signature.signature.iter())
             .enumerate()
         {
-            let tx_hash = tx_hasher
-                .segwit_signature_hash(
-                    idx,
-                    input
-                        .witness_script
-                        .as_ref()
-                        .expect("Missing witness script"),
-                    input.witness_utxo.as_ref().expect("Missing UTXO").value,
-                    EcdsaSighashType::All,
-                )
-                .map_err(|_| ProcessPegOutSigError::SighashError)?;
-
-            let tweak = input
-                .proprietary
-                .get(&proprietary_tweak_key())
-                .expect("we saved it with a tweak");
-
-            let tweaked_peer_key = peer_key.tweak(tweak, &self.secp);
-            self.secp
-                .verify_ecdsa(
-                    &Message::from_slice(&tx_hash[..]).unwrap(),
-                    signature,
-                    &tweaked_peer_key.key,
-                )
-                .map_err(|_| ProcessPegOutSigError::InvalidSignature)?;
-
-            if input
-                .partial_sigs
-                .insert(tweaked_peer_key.into(), EcdsaSig::sighash_all(*signature))
-                .is_some()
-            {
+            if input.tap_key_sig.is_some() {
                 // Should never happen since peers only sign a PSBT once
                 return Err(ProcessPegOutSigError::DuplicateSignature);
+            } else {
+                // input.tap_key_sig = Some(bitcoin::SchnorrSig::from_slice(&signature[..]).unwrap());
             }
         }
         Ok(())
     }
+
+    // fn sign_peg_out_psbt_old(
+    //     &self,
+    //     psbt: &mut PartiallySignedTransaction,
+    //     peer: &PeerId,
+    //     signature: &PegOutSignatureItem,
+    // ) -> Result<(), ProcessPegOutSigError> {
+    //     let peer_key = self
+    //         .cfg
+    //         .peer_verification_shares
+    //         .get(peer)
+    //         .expect("always called with valid peer id");
+
+    //     if psbt.inputs.len() != signature.signature.len() {
+    //         return Err(ProcessPegOutSigError::WrongSignatureCount(
+    //             psbt.inputs.len(),
+    //             signature.signature.len(),
+    //         ));
+    //     }
+
+    //     let mut tx_hasher = SighashCache::new(&psbt.unsigned_tx);
+    //     for (idx, (input, signature)) in psbt
+    //         .inputs
+    //         .iter_mut()
+    //         .zip(signature.signature.iter())
+    //         .enumerate()
+    //     {
+    //         let tx_hash = tx_hasher
+    //             .segwit_signature_hash(
+    //                 idx,
+    //                 input
+    //                     .witness_script
+    //                     .as_ref()
+    //                     .expect("Missing witness script"),
+    //                 input.witness_utxo.as_ref().expect("Missing UTXO").value,
+    //                 EcdsaSighashType::All,
+    //             )
+    //             .map_err(|_| ProcessPegOutSigError::SighashError)?;
+
+    //         let tweak = input
+    //             .proprietary
+    //             .get(&proprietary_tweak_key())
+    //             .expect("we saved it with a tweak");
+
+    //         let tweaked_peer_key = peer_key.tweak(tweak, &self.secp);
+    //         self.secp
+    //             .verify_ecdsa(
+    //                 &Message::from_slice(&tx_hash[..]).unwrap(),
+    //                 signature,
+    //                 &tweaked_peer_key.key,
+    //             )
+    //             .map_err(|_| ProcessPegOutSigError::InvalidSignature)?;
+
+    //         if input
+    //             .partial_sigs
+    //             .insert(tweaked_peer_key.into(), EcdsaSig::sighash_all(*signature))
+    //             .is_some()
+    //         {
+    //             // Should never happen since peers only sign a PSBT once
+    //             return Err(ProcessPegOutSigError::DuplicateSignature);
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     fn finalize_peg_out_psbt(
         &self,
@@ -1028,6 +1120,7 @@ impl<'a> StatelessWallet<'a> {
         Some(UnsignedTransaction {
             psbt,
             signatures: vec![],
+            nonces: vec![],
             change,
             fees: PegOutFees {
                 fee_rate,
@@ -1038,78 +1131,21 @@ impl<'a> StatelessWallet<'a> {
 
     fn sign_psbt(&self, psbt: &mut PartiallySignedTransaction) {
         let mut tx_hasher = SighashCache::new(&psbt.unsigned_tx);
-
-        for (idx, (psbt_input, _tx_input)) in psbt
-            .inputs
-            .iter_mut()
-            .zip(psbt.unsigned_tx.input.iter())
-            .enumerate()
-        {
-            let tweaked_secret = {
-                let mut secret_key = *self.secret_key;
-
-                let tweak_pk_bytes = psbt_input
-                    .proprietary
-                    .get(&proprietary_tweak_key())
-                    .expect("Malformed PSBT: expected tweak");
-                let pub_key = secp256k1::PublicKey::from_secret_key(self.secp, &secret_key);
-
-                let tweak = {
-                    let mut hasher = HmacEngine::<sha256::Hash>::new(&pub_key.serialize()[..]);
-                    hasher.input(&tweak_pk_bytes[..]);
-                    Hmac::from_engine(hasher).into_inner()
-                };
-
-                secret_key
-                    .add_assign(&tweak[..])
-                    .expect("Tweaking priv key failed"); // TODO: why could this happen?
-                secret_key
-            };
-
-            let tx_hash = tx_hasher
-                .segwit_signature_hash(
-                    idx,
-                    psbt_input
-                        .witness_script
-                        .as_ref()
-                        .expect("Missing witness script"),
-                    psbt_input
-                        .witness_utxo
-                        .as_ref()
-                        .expect("Missing UTXO")
-                        .value,
-                    EcdsaSighashType::All,
-                )
-                .expect("Failed to create segwit sighash");
-
-            let signature = self
-                .secp
-                .sign_ecdsa(&Message::from_slice(&tx_hash[..]).unwrap(), &tweaked_secret);
-
-            psbt_input.partial_sigs.insert(
-                bitcoin::PublicKey {
-                    compressed: true,
-                    inner: secp256k1::PublicKey::from_secret_key(self.secp, &tweaked_secret),
-                },
-                EcdsaSig::sighash_all(signature),
-            );
-        }
     }
 
     fn derive_script(&self, tweak: &[u8]) -> Script {
-        let descriptor = self.descriptor.translate_pk2_infallible(|pub_key| {
+        let descriptor = self.descriptor.translate_pk3_infallible(|pub_key| {
             let hashed_tweak = {
-                let mut hasher = HmacEngine::<sha256::Hash>::new(&pub_key.key.serialize()[..]);
+                let mut hasher = HmacEngine::<sha256::Hash>::new(&pub_key.serialize()[..]);
                 hasher.input(tweak);
                 Hmac::from_engine(hasher).into_inner()
             };
 
-            let mut tweak_key = pub_key.key;
+            let mut tweak_key = pub_key.clone();
             tweak_key
-                .add_exp_assign(self.secp, &hashed_tweak)
+                .tweak_add_assign(self.secp, &hashed_tweak)
                 .expect("tweaking failed");
-
-            CompressedPublicKey { key: tweak_key }
+            tweak_key
         });
 
         descriptor.script_pubkey()
@@ -1170,9 +1206,9 @@ impl Feerate {
 impl std::hash::Hash for PegOutSignatureItem {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.txid.hash(state);
-        for sig in self.signature.iter() {
-            sig.serialize_der().hash(state);
-        }
+        // for sig in self.signature.iter() {
+        //     sig.serialize_der().hash(state);
+        // }
     }
 }
 

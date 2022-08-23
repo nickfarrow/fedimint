@@ -1,4 +1,8 @@
-use bitcoin::hashes::{sha256, Hash as BitcoinHash, Hmac, HmacEngine};
+use bitcoin::{
+    hashes::{sha256, Hash as BitcoinHash, Hmac, HmacEngine},
+    XOnlyPublicKey,
+};
+use miniscript::Descriptor;
 use secp256k1::{Secp256k1, Verification};
 use std::io::Write;
 
@@ -12,6 +16,18 @@ pub trait Contract {
 pub trait Tweakable {
     /// Tweak the key with a `tweak` contract
     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self;
+}
+
+impl Tweakable for XOnlyPublicKey {
+    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+        todo!()
+    }
+}
+
+impl<Pk: miniscript::MiniscriptKey> Tweakable for Descriptor<Pk> {
+    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+        todo!()
+    }
 }
 
 impl Tweakable for secp256k1::PublicKey {

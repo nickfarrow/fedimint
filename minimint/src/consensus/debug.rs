@@ -3,7 +3,9 @@ use minimint_core::modules::ln::contracts::Contract;
 use minimint_core::modules::ln::{ContractOrOfferOutput, ContractOutput, DecryptionShareCI};
 use minimint_core::modules::mint::PartiallySignedRequest;
 use minimint_core::transaction::{Input, Output, Transaction};
-use minimint_wallet::{PegOutSignatureItem, RoundConsensusItem, WalletConsensusItem};
+use minimint_wallet::{
+    PegOutNonceItem, PegOutSignatureItem, RoundConsensusItem, WalletConsensusItem,
+};
 use std::fmt::Write;
 
 /// outputs a useful debug message for epochs indicating what happened
@@ -31,6 +33,9 @@ fn item_message(item: &ConsensusItem) -> String {
             txid,
             ..
         })) => format!("Wallet Peg Out PSBT {}", txid),
+        ConsensusItem::Wallet(WalletConsensusItem::PegOutNonce(PegOutNonceItem {
+            txid, ..
+        })) => format!("Wallet Peg Out nonce {}", txid),
         ConsensusItem::Mint(PartiallySignedRequest {
             out_point,
             partial_signature,
