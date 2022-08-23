@@ -48,7 +48,7 @@ impl DatabaseKeyPrefixConst for RoundConsensusKey {
     type Value = RoundConsensus;
 }
 
-#[derive(Clone, Debug, Encodable, Decodable)]
+#[derive(Clone, Debug, Encodable, Decodable, Hash, PartialEq, Eq)]
 pub struct UnsignedTransactionKey(pub Txid);
 
 impl DatabaseKeyPrefixConst for UnsignedTransactionKey {

@@ -7,10 +7,13 @@ use schnorr_fun::{
 };
 
 pub use schnorr_fun::binonce::Nonce;
+pub use schnorr_fun::frost::FrostKey;
+pub use schnorr_fun::frost::SignSession;
 pub use schnorr_fun::frost::XOnlyFrostKey;
 pub use schnorr_fun::fun::marker::EvenY;
 pub use schnorr_fun::fun::Point;
 pub use schnorr_fun::fun::Scalar;
+pub use schnorr_fun::Message;
 pub use schnorr_fun::Schnorr;
 pub use schnorr_fun::Signature;
 
@@ -39,7 +42,7 @@ impl Decodable for FrostNonce {
     }
 }
 
-#[derive(Clone, Debug, Eq, Serialize, PartialEq, Hash, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Serialize, PartialEq, Hash, Deserialize)]
 pub struct FrostSigShare(pub Scalar<Public, Zero>);
 
 impl Encodable for FrostSigShare {
@@ -67,14 +70,14 @@ pub fn trusted_frost_gen(
     threshold: u32,
     n_parties: u32,
     // _rng: &mut (impl RngCore + CryptoRng),
-) -> (Vec<Scalar>, XOnlyFrostKey) {
+) -> (Vec<Scalar>, FrostKey) {
     let frost = Frost::new(Schnorr::<Sha256, Deterministic<Sha256>>::new(
         Deterministic::<Sha256>::default(),
     ));
 
     // create some scalar poly for each party
     let mut scalar_polys = vec![];
-    for i in 1..=n_parties {
+    for _ in 1..=n_parties {
         let scalar_poly = frost.new_scalar_poly(
             Scalar::random(&mut rand_2::thread_rng()),
             threshold,
@@ -88,7 +91,7 @@ pub fn trusted_frost_gen(
 
     let mut proofs_of_possession = vec![];
     let mut shares_vec = vec![];
-    for (i, sp) in scalar_polys.into_iter().enumerate() {
+    for sp in scalar_polys.into_iter() {
         let (shares, pop) = frost.create_shares(&key_gen, sp);
         proofs_of_possession.push(pop);
         shares_vec.push(shares);
@@ -111,7 +114,7 @@ pub fn trusted_frost_gen(
                     proofs_of_possession.clone(),
                 )
                 .unwrap();
-            (secret_share, frost_key.into_xonly_key())
+            (secret_share, frost_key)
         })
         .unzip();
 

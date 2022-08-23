@@ -1,8 +1,4 @@
-use bitcoin::{
-    hashes::{sha256, Hash as BitcoinHash, Hmac, HmacEngine},
-    XOnlyPublicKey,
-};
-use miniscript::Descriptor;
+use bitcoin::hashes::{sha256, Hash as BitcoinHash, Hmac, HmacEngine};
 use secp256k1::{Secp256k1, Verification};
 use std::io::Write;
 
@@ -18,17 +14,15 @@ pub trait Tweakable {
     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self;
 }
 
-impl Tweakable for XOnlyPublicKey {
-    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
-        todo!()
-    }
-}
-
-impl<Pk: miniscript::MiniscriptKey> Tweakable for Descriptor<Pk> {
-    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
-        todo!()
-    }
-}
+// impl Tweakable for crate::frost::FrostKey {
+//     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+//         let mut hasher = HmacEngine::<sha256::Hash>::new(&self.public_key().to_bytes()[..]);
+//         tweak.encode(&mut hasher).expect("hashing is infallible");
+//         let tweak = Hmac::from_engine(hasher).into_inner();
+//         let tweak = crate::frost::Scalar::from_bytes_mod_order(tweak);
+//         crate::frost::FrostKey::tweak(&mut self.clone(), tweak).expect("computationally unreachable")
+//     }
+// }
 
 impl Tweakable for secp256k1::PublicKey {
     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {

@@ -20,7 +20,8 @@ pub struct WalletConfig {
     pub peg_in_descriptor: PegInDescriptor,
     pub peer_verification_shares: BTreeMap<PeerId, frost::VerificationShare>,
     pub peg_in_key: frost::Scalar,
-    pub frost_key: frost::XOnlyFrostKey,
+    pub frost_key: frost::FrostKey,
+    pub peer_id: PeerId,
     pub finality_delay: u32,
     pub default_fee: Feerate,
     pub btc_rpc_address: String,
@@ -77,7 +78,7 @@ impl GenerateConfig for WalletConfig {
             .collect();
 
         let peg_in_descriptor =
-            Descriptor::Tr(Tr::new(frost_key.public_key().to_xonly().into(), None).unwrap());
+            Descriptor::Tr(Tr::new(frost_key.public_key().into(), None).unwrap());
 
         let wallet_cfgs: BTreeMap<PeerId, Self> = peers
             .iter()
@@ -86,6 +87,7 @@ impl GenerateConfig for WalletConfig {
             .map(|(peer_id, secret_share)| {
                 let wallet_cfg = WalletConfig {
                     network: Network::Regtest,
+                    peer_id,
                     peg_in_key: secret_share,
                     peg_in_descriptor: peg_in_descriptor.clone(),
                     finality_delay: FINALITY_DELAY,

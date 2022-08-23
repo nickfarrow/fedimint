@@ -1,9 +1,8 @@
-use crate::tweakable::Tweakable;
-// use crate::tweakable::{Contract, Tweakable};
+use crate::tweakable::{Contract, Tweakable};
 use bitcoin::util::merkleblock::PartialMerkleTree;
-use bitcoin::{BlockHash, BlockHeader, OutPoint, Transaction, Txid, XOnlyPublicKey};
+use bitcoin::{BlockHash, BlockHeader, OutPoint, Transaction, Txid};
 use minimint_api::encoding::{Decodable, DecodeError, Encodable};
-use miniscript::{Descriptor, DescriptorTrait};
+use miniscript::{Descriptor, DescriptorTrait, TranslatePk3};
 use secp256k1::{Secp256k1, Verification};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -121,7 +120,7 @@ impl PegInProof {
     pub fn verify<C: Verification>(
         &self,
         secp: &Secp256k1<C>,
-        untweaked_pegin_descriptor: &Descriptor<XOnlyPublicKey>,
+        untweaked_pegin_descriptor: &Descriptor<secp256k1::PublicKey>,
     ) -> Result<(), PegInProofError> {
         let script = untweaked_pegin_descriptor
             .tweak(&self.tweak_contract_key, secp)
@@ -164,6 +163,12 @@ impl PegInProof {
             txid: self.transaction.txid(),
             vout: self.output_idx,
         }
+    }
+}
+
+impl Tweakable for Descriptor<secp256k1::PublicKey> {
+    fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+        self.translate_pk3_infallible(|pk| pk.tweak(tweak, secp))
     }
 }
 
