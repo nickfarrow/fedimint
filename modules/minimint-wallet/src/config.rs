@@ -18,7 +18,6 @@ const FINALITY_DELAY: u32 = 10;
 pub struct WalletConfig {
     pub network: Network,
     pub peg_in_descriptor: PegInDescriptor,
-    pub peer_verification_shares: BTreeMap<PeerId, frost::VerificationShare>,
     pub peg_in_key: frost::Scalar,
     pub frost_key: frost::FrostKey,
     pub peer_id: PeerId,
@@ -70,12 +69,6 @@ impl GenerateConfig for WalletConfig {
 
         let (secret_shares, frost_key) =
             frost::trusted_frost_gen(threshold as u32, peers.len() as u32);
-        let verification_shares: BTreeMap<PeerId, frost::VerificationShare> = peers
-            .iter()
-            .cloned()
-            .map(|id| id)
-            .zip(frost_key.verification_shares())
-            .collect();
 
         let peg_in_descriptor =
             Descriptor::Tr(Tr::new(frost_key.public_key().into(), None).unwrap());
@@ -96,7 +89,6 @@ impl GenerateConfig for WalletConfig {
                     btc_rpc_user: "bitcoin".to_string(),
                     btc_rpc_pass: "bitcoin".to_string(),
                     fee_consensus: FeeConsensus::default(),
-                    peer_verification_shares: verification_shares.clone(),
                     frost_key: frost_key.clone(),
                 };
                 (peer_id, wallet_cfg)

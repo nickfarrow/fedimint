@@ -578,7 +578,24 @@ impl FederationModule for Wallet {
                         .push(signature.to_bytes())
                 }
 
-                batch.append_insert_new(PendingTransactionKey(txid.0), pending_tx); //wrong!
+                let change_tweak: [u8; 32] = tx
+                    .psbt
+                    .outputs
+                    .iter()
+                    .flat_map(|output| output.proprietary.get(&proprietary_tweak_key()).cloned())
+                    .next()
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+
+                batch.append_insert_new(
+                    PendingTransactionKey(txid.0),
+                    PendingTransaction {
+                        tx: pending_tx,
+                        tweak: change_tweak,
+                        change: tx.change,
+                    },
+                );
                 batch.append_delete(PegOutTxSignatureCI(txid.0));
                 batch.append_delete(txid);
             } else {
@@ -1105,12 +1122,7 @@ impl<'a> StatelessWallet<'a> {
                         partial_sigs: Default::default(),
                         sighash_type: None,
                         redeem_script: None,
-                        witness_script: Some(
-                            self.descriptor
-                                .tweak(&utxo.tweak, self.secp)
-                                .script_code()
-                                .expect("Failed to tweak descriptor"),
-                        ),
+                        witness_script: None,
                         bip32_derivation: Default::default(),
                         final_script_sig: None,
                         final_script_witness: None,

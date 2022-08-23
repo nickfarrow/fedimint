@@ -342,7 +342,8 @@ where
                 .iter()
                 .filter(|(peer, sig)| {
                     let pub_key = self.cfg.epoch_pk_set.public_key_share(peer.to_usize());
-                    pub_key.verify(&sig.0, prev_epoch.hash)
+                    dbg!(&prev_epoch.hash);
+                    dbg!(pub_key.verify(&sig.0, prev_epoch.hash))
                 })
                 .map(|(peer, sig)| {
                     valid_sigs.insert(*peer);
