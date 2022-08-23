@@ -14,6 +14,16 @@ pub trait Tweakable {
     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self;
 }
 
+// impl Tweakable for crate::frost::FrostKey {
+//     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
+//         let mut hasher = HmacEngine::<sha256::Hash>::new(&self.public_key().to_bytes()[..]);
+//         tweak.encode(&mut hasher).expect("hashing is infallible");
+//         let tweak = Hmac::from_engine(hasher).into_inner();
+//         let tweak = crate::frost::Scalar::from_bytes_mod_order(tweak);
+//         crate::frost::FrostKey::tweak(&mut self.clone(), tweak).expect("computationally unreachable")
+//     }
+// }
+
 impl Tweakable for secp256k1::PublicKey {
     fn tweak<Ctx: Verification, Ctr: Contract>(&self, tweak: &Ctr, secp: &Secp256k1<Ctx>) -> Self {
         let mut hasher = HmacEngine::<sha256::Hash>::new(&self.serialize()[..]);
