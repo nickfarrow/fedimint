@@ -253,8 +253,8 @@ impl FederationModule for Wallet {
             });
 
         signature_proposals
-            .chain(std::iter::once(round_ci))
             .chain(nonce_proposals)
+            .chain(std::iter::once(round_ci))
             .collect()
     }
 
@@ -456,7 +456,7 @@ impl FederationModule for Wallet {
             .db
             .find_by_prefix(&UnsignedTransactionPrefixKey)
             .map(|res| res.expect("DB error"))
-            .filter(|(_, unsigned)| !unsigned.nonces.is_empty())
+            .filter(|(_, unsigned)| !unsigned.nonces.is_empty() && unsigned.signatures.is_empty())
             .collect::<HashMap<_, _>>();
 
         let txs_with_signature_shares = self
@@ -477,7 +477,7 @@ impl FederationModule for Wallet {
 
             for peer in consensus_peers.sub(&peers_who_provided_nonces) {
                 error!(
-                    "Dropping {:?} for not contributing forst nonces to signing session",
+                    "Dropping {:?} for not contributing frost nonces to signing session",
                     peer
                 );
                 drop_peers.insert(peer);
@@ -488,9 +488,16 @@ impl FederationModule for Wallet {
             for input_index in 0..tx.psbt.inputs.len() {
                 let frost_instance = frost::new_frost();
                 let (sign_session, frost_key, _) = self.create_sign_session(&tx, input_index);
-
-                let peers_who_promised_sigs = sign_session.participants().collect::<HashSet<_>>();
-
+                let consensus_peers = consensus_peers
+                    .iter()
+                    .map(|peer_id| peer_id.to_usize() as u32)
+                    .collect::<HashSet<_>>();
+                let peers_who_promised_sigs = sign_session
+                    .participants()
+                    .collect::<HashSet<_>>()
+                    .intersection(&consensus_peers)
+                    .cloned()
+                    .collect::<HashSet<_>>();
                 let peers_who_provided_sigs = sign_session
                     .participants()
                     .filter_map(|peer| {
@@ -499,12 +506,13 @@ impl FederationModule for Wallet {
                             .iter()
                             .find(|(peer_id, _)| peer_id.to_usize() == peer as usize)?
                             .1;
+                        let signature_share = signature_shares.signatures.get(input_index)?.0;
 
                         if frost_instance.verify_signature_share(
                             &frost_key,
                             &sign_session,
                             peer,
-                            signature_shares.signatures.get(input_index)?.0,
+                            signature_share,
                         ) {
                             Some(peer)
                         } else {
@@ -535,7 +543,17 @@ impl FederationModule for Wallet {
             let ordered_nonces: BTreeMap<_, _> = tx
                 .nonces
                 .iter()
-                .filter(|(peer, _)| !drop_peers.contains(peer))
+                .filter(|(peer, _)| {
+                    if drop_peers.contains(peer) {
+                        warn!(
+                            "not using FROST nonce from peer {} because we're dropping him",
+                            peer
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                })
                 .cloned()
                 .collect();
 
@@ -549,14 +567,25 @@ impl FederationModule for Wallet {
                     let sid = [(input_index as u32).to_be_bytes().as_slice(), &txid.0[..]].concat();
                     let nonce_kp =
                         frost_instance.gen_nonce(&self.cfg.peg_in_key, &sid[..], None, None);
-                    let signature_share_for_input = frost_instance.sign(
-                        &on_chain_frost_key,
-                        &sign_session,
-                        self.cfg.peer_id.to_usize() as u32,
-                        &self.cfg.peg_in_key,
-                        nonce_kp,
-                    );
-                    tx_secret_shares.push(frost::FrostSigShare(signature_share_for_input));
+                    if sign_session
+                        .participants()
+                        .find(|peer| self.cfg.peer_id.to_usize() == *peer as usize)
+                        .is_some()
+                    {
+                        let signature_share_for_input = frost_instance.sign(
+                            &on_chain_frost_key,
+                            &sign_session,
+                            self.cfg.peer_id.to_usize() as u32,
+                            &self.cfg.peg_in_key,
+                            nonce_kp,
+                        );
+                        tx_secret_shares.push(frost::FrostSigShare(signature_share_for_input));
+                    } else {
+                        warn!(
+                            "peer {} decided to not contribute sig share because they were dropped",
+                            self.cfg.peer_id
+                        );
+                    }
                 }
 
                 // Guessing that we can insert without delete
@@ -568,9 +597,8 @@ impl FederationModule for Wallet {
             }
         }
 
-        let mut success = true;
-
         for (txid, tx) in txs_with_signature_shares {
+            let mut success = true;
             let mut pending_tx = tx.psbt.clone().extract_tx();
             let frost_instance = frost::new_frost();
 
@@ -583,7 +611,8 @@ impl FederationModule for Wallet {
                     .map(|peer| {
                         Some(
                             tx.signatures
-                                .get(peer as usize)?
+                                .iter()
+                                .find(|(peer_id, _)| peer_id.to_usize() == peer as usize)?
                                 .1
                                 .signatures
                                 .get(input_index)?
@@ -610,8 +639,8 @@ impl FederationModule for Wallet {
                             .push(signature.to_bytes())
                     }
                     None => {
-                        warn!(
-                            "missing shares from participants for input {} on {}",
+                        info!(
+                            "missing shares from participants for input {} on {} so waiting for more",
                             input_index,
                             pending_tx.txid()
                         );
