@@ -476,41 +476,54 @@ impl FederationModule for Wallet {
                 .collect::<HashSet<_>>();
 
             for peer in consensus_peers.sub(&peers_who_provided_nonces) {
-                error!("Dropping {:?} for not contributing sigs to PSBT", peer);
+                error!(
+                    "Dropping {:?} for not contributing forst nonces to signing session",
+                    peer
+                );
                 drop_peers.insert(peer);
             }
         }
 
         for (txid, tx) in &txs_with_signature_shares {
-            let peers_who_provided_signatures = tx
-                .signatures
-                .iter()
-                .filter_map(|(peer, signatures)| {
-                    for input_index in 0..tx.psbt.inputs.len() {
-                        let (sign_session, frost_key) = self.create_sign_session(&tx, input_index);
-                        let frost_instance = frost::new_frost();
-                        if !frost_instance.verify_signature_share(
+            for input_index in 0..tx.psbt.inputs.len() {
+                let frost_instance = frost::new_frost();
+                let (sign_session, frost_key, _) = self.create_sign_session(&tx, input_index);
+
+                let peers_who_promised_sigs = sign_session.participants().collect::<HashSet<_>>();
+
+                let peers_who_provided_sigs = sign_session
+                    .participants()
+                    .filter_map(|peer| {
+                        let signature_shares = &tx
+                            .signatures
+                            .iter()
+                            .find(|(peer_id, _)| peer_id.to_usize() == peer as usize)?
+                            .1;
+
+                        if frost_instance.verify_signature_share(
                             &frost_key,
                             &sign_session,
-                            peer.to_usize() as u32,
-                            signatures.signatures.get(input_index)?.0,
+                            peer,
+                            signature_shares.signatures.get(input_index)?.0,
                         ) {
+                            Some(peer)
+                        } else {
                             warn!(
-                                "signature share for tx {} input index {} was invalid from peer {}",
-                                txid.0,
-                                input_index,
-                                peer.to_usize()
+                                "peer {} provided an invalid signature share on input {} in {}",
+                                peer, input_index, txid.0
                             );
-                            return None;
+                            None
                         }
-                    }
-                    Some(*peer)
-                })
-                .collect::<HashSet<_>>();
+                    })
+                    .collect::<HashSet<_>>();
 
-            for peer in consensus_peers.sub(&peers_who_provided_signatures) {
-                error!("Dropping {:?} for not contributing sigs to PSBT", peer);
-                drop_peers.insert(peer);
+                for peer in peers_who_promised_sigs.sub(&peers_who_provided_sigs) {
+                    error!(
+                        "Dropping {:?} for not contributing FROST signature shares",
+                        peer
+                    );
+                    drop_peers.insert(PeerId::from(peer as u16));
+                }
             }
         }
 
@@ -531,7 +544,7 @@ impl FederationModule for Wallet {
             if tx.nonces.len() >= self.cfg.frost_key.threshold() as usize {
                 let frost_instance = frost::new_frost();
                 for (input_index, _) in tx.psbt.inputs.iter().enumerate() {
-                    let (sign_session, on_chain_frost_key) =
+                    let (sign_session, on_chain_frost_key, _) =
                         self.create_sign_session(&tx, input_index);
                     let sid = [(input_index as u32).to_be_bytes().as_slice(), &txid.0[..]].concat();
                     let nonce_kp =
@@ -555,29 +568,60 @@ impl FederationModule for Wallet {
             }
         }
 
+        let mut success = true;
+
         for (txid, tx) in txs_with_signature_shares {
             let mut pending_tx = tx.psbt.clone().extract_tx();
             let frost_instance = frost::new_frost();
 
-            if tx.signatures.len() >= self.cfg.frost_key.threshold() as usize {
-                for input_index in 0..pending_tx.input.len() {
-                    let (sign_session, on_chain_frost_key) =
-                        self.create_sign_session(&tx, input_index);
-                    let sig_shares = tx
-                        .signatures
-                        .iter()
-                        .map(|(_, sig_shares)| sig_shares.signatures[input_index].0)
-                        .collect();
-                    let signature = frost_instance.combine_signature_shares(
-                        &on_chain_frost_key,
-                        &sign_session,
-                        sig_shares,
-                    );
-                    pending_tx.input[input_index]
-                        .witness
-                        .push(signature.to_bytes())
-                }
+            for input_index in 0..pending_tx.input.len() {
+                let (sign_session, on_chain_frost_key, message) =
+                    self.create_sign_session(&tx, input_index);
 
+                let sig_shares = sign_session
+                    .participants()
+                    .map(|peer| {
+                        Some(
+                            tx.signatures
+                                .get(peer as usize)?
+                                .1
+                                .signatures
+                                .get(input_index)?
+                                .0,
+                        )
+                    })
+                    .collect::<Option<Vec<_>>>();
+
+                match sig_shares {
+                    Some(sig_shares) => {
+                        let signature = frost_instance.combine_signature_shares(
+                            &on_chain_frost_key,
+                            &sign_session,
+                            sig_shares,
+                        );
+
+                        assert!(frost_instance.schnorr.verify(
+                            &on_chain_frost_key.public_key(),
+                            frost::Message::<schnorr_fun::fun::marker::Public>::raw(&message[..]),
+                            &signature
+                        ));
+                        pending_tx.input[input_index]
+                            .witness
+                            .push(signature.to_bytes())
+                    }
+                    None => {
+                        warn!(
+                            "missing shares from participants for input {} on {}",
+                            input_index,
+                            pending_tx.txid()
+                        );
+                        success = false;
+                        continue;
+                    }
+                }
+            }
+
+            if success {
                 let change_tweak: [u8; 32] = tx
                     .psbt
                     .outputs
@@ -598,8 +642,6 @@ impl FederationModule for Wallet {
                 );
                 batch.append_delete(PegOutTxSignatureCI(txid.0));
                 batch.append_delete(txid);
-            } else {
-                warn!("unable to finish frost signature because not enough shares");
             }
         }
 
@@ -947,7 +989,7 @@ impl Wallet {
         &self,
         tx: &UnsignedTransaction,
         input_index: usize,
-    ) -> (frost::SignSession, frost::XOnlyFrostKey) {
+    ) -> (frost::SignSession, frost::XOnlyFrostKey, [u8; 32]) {
         let frost_instance = frost::new_frost();
         let frost_key = self.cfg.frost_key.clone();
 
@@ -998,6 +1040,7 @@ impl Wallet {
                 frost::Message::raw(&message[..]),
             ),
             tr_tweaked_key,
+            message.into_inner(),
         )
     }
 }

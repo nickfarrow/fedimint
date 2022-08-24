@@ -2503,7 +2503,7 @@ dependencies = [
 [[package]]
 name = "schnorr_fun"
 version = "0.7.1"
-source = "git+https://github.com/nickfarrow/secp256kfun?rev=6af4f1806280dae58ea78a22a83e2aeb8e693e87#6af4f1806280dae58ea78a22a83e2aeb8e693e87"
+source = "git+https://github.com/nickfarrow/secp256kfun?rev=9bb9deab24e4f75e030c04ff5a8f0f40e9fc6388#9bb9deab24e4f75e030c04ff5a8f0f40e9fc6388"
 dependencies = [
  "secp256kfun",
  "serde",
@@ -2569,7 +2569,7 @@ dependencies = [
 [[package]]
 name = "secp256kfun"
 version = "0.7.1"
-source = "git+https://github.com/nickfarrow/secp256kfun?rev=6af4f1806280dae58ea78a22a83e2aeb8e693e87#6af4f1806280dae58ea78a22a83e2aeb8e693e87"
+source = "git+https://github.com/nickfarrow/secp256kfun?rev=9bb9deab24e4f75e030c04ff5a8f0f40e9fc6388#9bb9deab24e4f75e030c04ff5a8f0f40e9fc6388"
 dependencies = [
  "digest",
  "rand_core 0.6.3",

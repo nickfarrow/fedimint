@@ -31,7 +31,7 @@ tokio = { version = "1.0.1", features = ["sync"], optional = true }
 tracing ="0.1.22"
 validator = { version = "0.13", features = ["derive"] }
 # schnorr_fun = { path = "/home/nick/repos/secp256kfun/schnorr_fun", features = ["serde", "libsecp_compat"]}
-schnorr_fun = { git = "https://github.com/nickfarrow/secp256kfun", rev = "6af4f1806280dae58ea78a22a83e2aeb8e693e87", features = ["serde", "libsecp_compat"]}
+schnorr_fun = { git = "https://github.com/nickfarrow/secp256kfun", rev = "9bb9deab24e4f75e030c04ff5a8f0f40e9fc6388", features = ["serde", "libsecp_compat"]}
 sha2 = "0.9"
 
 
