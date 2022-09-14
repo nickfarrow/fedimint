@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["main",""],["pay_invoice",""]],"struct":[["Opts",""],["State",""]]});
+window.SIDEBAR_ITEMS = {"enum":[["GatewayRequest",""],["LnGatewayError",""]],"fn":[["serde_hex_deserialize",""]],"macro":[["impl_gateway_request_trait",""]],"mod":[["cln",""],["ln",""],["webserver",""]],"struct":[["BalancePayload",""],["DepositAddressPayload",""],["DepositPayload",""],["GatewayRequestInner",""],["LnGateway",""],["WithdrawPayload",""]],"trait":[["GatewayRequestTrait",""]],"type":[["Result",""]]};
