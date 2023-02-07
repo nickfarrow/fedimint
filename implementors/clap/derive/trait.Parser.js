@@ -1,6 +1,7 @@
 (function() {var implementors = {
-"clientd_cli":[["impl Parser for <a class=\"struct\" href=\"clientd_cli/struct.Cli.html\" title=\"struct clientd_cli::Cli\">Cli</a>"]],
-"configgen":[["impl Parser for <a class=\"struct\" href=\"configgen/struct.Options.html\" title=\"struct configgen::Options\">Options</a>"]],
-"mint_client_cli":[["impl Parser for <a class=\"struct\" href=\"mint_client_cli/struct.Options.html\" title=\"struct mint_client_cli::Options\">Options</a>"],["impl Parser for <a class=\"enum\" href=\"mint_client_cli/enum.Command.html\" title=\"enum mint_client_cli::Command\">Command</a>"]],
-"mint_rpc_client":[["impl Parser for <a class=\"struct\" href=\"mint_rpc_client/struct.ApiCall.html\" title=\"struct mint_rpc_client::ApiCall\">ApiCall</a>"]]
+"dbtool":[["impl Parser for <a class=\"struct\" href=\"dbtool/struct.Options.html\" title=\"struct dbtool::Options\">Options</a>"]],
+"distributedgen":[["impl Parser for <a class=\"struct\" href=\"distributedgen/struct.Cli.html\" title=\"struct distributedgen::Cli\">Cli</a>"]],
+"fedimint_cli":[["impl Parser for <a class=\"struct\" href=\"fedimint_cli/struct.Cli.html\" title=\"struct fedimint_cli::Cli\">Cli</a>"],["impl Parser for <a class=\"struct\" href=\"fedimint_cli/struct.CliNoWorkdir.html\" title=\"struct fedimint_cli::CliNoWorkdir\">CliNoWorkdir</a>"]],
+"gateway_cli":[["impl Parser for <a class=\"struct\" href=\"gateway_cli/struct.Cli.html\" title=\"struct gateway_cli::Cli\">Cli</a>"]],
+"gateway_cln_extension":[["impl Parser for <a class=\"struct\" href=\"gateway_cln_extension/struct.ClnExtensionOpts.html\" title=\"struct gateway_cln_extension::ClnExtensionOpts\">ClnExtensionOpts</a>"]]
 };if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

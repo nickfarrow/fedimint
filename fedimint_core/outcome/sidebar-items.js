@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":[["FIELDS",""],["VARIANTS",""]],"enum":[["TransactionStatus",""],["__Field",""]],"mod":[["legacy",""]],"struct":[["__FieldVisitor",""],["__Visitor",""]],"type":[["SerdeOutputOutcome",""]]};

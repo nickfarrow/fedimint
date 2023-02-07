@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["ConsensusItem",""],["EpochVerifyError",""]],"struct":[["EpochOutcome",""],["SerdeSignature",""],["SerdeSignatureShare",""],["SignedEpochOutcome",""],["UnzipConsensusItem",""],["__Visitor",""]],"trait":[["IterUnzipConsensusItem",""]],"type":[["SerdeConsensusItem",""],["SerdeEpochHistory",""]]};
