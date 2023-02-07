@@ -432,6 +432,19 @@
 <a href="#432" id="432">432</a>
 <a href="#433" id="433">433</a>
 <a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
 </pre><pre class="rust"><code><span class="attr">#![cfg_attr(target_family = <span class="string">&quot;wasm&quot;</span>, allow(dead_code))]
 
 </span><span class="kw">use </span>std::collections::VecDeque;
@@ -442,6 +455,8 @@
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::{Duration, Instant};
 
+<span class="attr">#[cfg(target_family = <span class="string">&quot;wasm&quot;</span>)]
+</span><span class="kw">use </span>futures::channel::oneshot;
 <span class="kw">use </span>futures::future::BoxFuture;
 <span class="kw">use </span>futures::lock::Mutex;
 <span class="kw">pub use </span>imp::<span class="kw-2">*</span>;
@@ -589,12 +604,14 @@
     }
 
     <span class="attr">#[cfg(not(target_family = <span class="string">&quot;wasm&quot;</span>))]
-    </span><span class="kw">pub async fn </span>spawn&lt;Fut&gt;(
+    </span><span class="kw">pub async fn </span>spawn&lt;Fut, R&gt;(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         name: <span class="kw">impl </span>Into&lt;String&gt;,
         f: <span class="kw">impl </span>FnOnce(TaskHandle) -&gt; Fut + Send + <span class="lifetime">&#39;static</span>,
-    ) <span class="kw">where
-        </span>Fut: Future&lt;Output = ()&gt; + Send + <span class="lifetime">&#39;static</span>,
+    ) -&gt; oneshot::Receiver&lt;R&gt;
+    <span class="kw">where
+        </span>Fut: Future&lt;Output = R&gt; + Send + <span class="lifetime">&#39;static</span>,
+        R: Send + <span class="lifetime">&#39;static</span>,
     {
         <span class="kw">let </span>name = name.into();
         <span class="kw">let </span><span class="kw-2">mut </span>guard = TaskPanicGuard {
@@ -604,12 +621,16 @@
         };
         <span class="kw">let </span>handle = <span class="self">self</span>.make_handle();
 
+        <span class="kw">let </span>(tx, rx) = oneshot::channel();
         <span class="kw">if let </span><span class="prelude-val">Some</span>(handle) = <span class="self">self</span>::imp::spawn(<span class="kw">async move </span>{
-            f(handle).<span class="kw">await</span>;
+            <span class="comment">// if receiver is not interested, just drop the message
+            </span><span class="kw">let _ </span>= tx.send(f(handle).<span class="kw">await</span>);
         }) {
             <span class="self">self</span>.inner.join.lock().<span class="kw">await</span>.push_back((name, handle));
         }
         guard.completed = <span class="bool-val">true</span>;
+
+        rx
     }
 
     <span class="attr">#[cfg(not(target_family = <span class="string">&quot;wasm&quot;</span>))]
@@ -637,12 +658,14 @@
     }
     <span class="comment">// TODO: Send vs lack of Send bound; do something about it
     </span><span class="attr">#[cfg(target_family = <span class="string">&quot;wasm&quot;</span>)]
-    </span><span class="kw">pub async fn </span>spawn&lt;Fut&gt;(
+    </span><span class="kw">pub async fn </span>spawn&lt;Fut, R&gt;(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         name: <span class="kw">impl </span>Into&lt;String&gt;,
         f: <span class="kw">impl </span>FnOnce(TaskHandle) -&gt; Fut + <span class="lifetime">&#39;static</span>,
-    ) <span class="kw">where
-        </span>Fut: Future&lt;Output = ()&gt; + <span class="lifetime">&#39;static</span>,
+    ) -&gt; oneshot::Receiver&lt;R&gt;
+    <span class="kw">where
+        </span>Fut: Future&lt;Output = R&gt; + <span class="lifetime">&#39;static</span>,
+        R: <span class="lifetime">&#39;static</span>,
     {
         <span class="kw">let </span>name = name.into();
         <span class="kw">let </span><span class="kw-2">mut </span>guard = TaskPanicGuard {
@@ -652,12 +675,15 @@
         };
         <span class="kw">let </span>handle = <span class="self">self</span>.make_handle();
 
+        <span class="kw">let </span>(tx, rx) = oneshot::channel();
         <span class="kw">if let </span><span class="prelude-val">Some</span>(handle) = <span class="self">self</span>::imp::spawn(<span class="kw">async move </span>{
-            f(handle).<span class="kw">await</span>;
+            <span class="kw">let _ </span>= tx.send(f(handle).<span class="kw">await</span>);
         }) {
             <span class="self">self</span>.inner.join.lock().<span class="kw">await</span>.push_back((name, handle));
         }
         guard.completed = <span class="bool-val">true</span>;
+
+        rx
     }
 
     <span class="kw">pub async fn </span>join_all(<span class="self">self</span>, join_timeout: <span class="prelude-ty">Option</span>&lt;Duration&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;(), anyhow::Error&gt; {

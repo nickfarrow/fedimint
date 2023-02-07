@@ -1695,7 +1695,7 @@
         <span class="kw">match </span>msg {
             DkgMessage::HashedCommit(hashed) =&gt; {
                 <span class="kw">match </span><span class="self">self</span>.hashed_commits.get(<span class="kw-2">&amp;</span>peer) {
-                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != hashed =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{} sent us two hashes!&quot;</span>, peer),
+                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != hashed =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent us two hashes!&quot;</span>),
                     <span class="kw">_ </span>=&gt; <span class="self">self</span>.hashed_commits.insert(peer, hashed),
                 };
 
@@ -1706,11 +1706,11 @@
             }
             DkgMessage::Commit(commit) =&gt; {
                 <span class="kw">let </span>hash = <span class="self">self</span>.hash(commit.clone());
-                <span class="macro">assert_eq!</span>(<span class="self">self</span>.threshold, commit.len(), <span class="string">&quot;wrong degree from {}&quot;</span>, peer);
-                <span class="macro">assert_eq!</span>(hash, <span class="self">self</span>.hashed_commits[<span class="kw-2">&amp;</span>peer], <span class="string">&quot;wrong hash from {}&quot;</span>, peer);
+                <span class="macro">assert_eq!</span>(<span class="self">self</span>.threshold, commit.len(), <span class="string">&quot;wrong degree from {peer}&quot;</span>);
+                <span class="macro">assert_eq!</span>(hash, <span class="self">self</span>.hashed_commits[<span class="kw-2">&amp;</span>peer], <span class="string">&quot;wrong hash from {peer}&quot;</span>);
 
                 <span class="kw">match </span><span class="self">self</span>.commitments.get(<span class="kw-2">&amp;</span>peer) {
-                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != commit =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{} sent us two commitments!&quot;</span>, peer),
+                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != commit =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent us two commitments!&quot;</span>),
                     <span class="kw">_ </span>=&gt; <span class="self">self</span>.commitments.insert(peer, commit),
                 };
 
@@ -1736,7 +1736,7 @@
                 <span class="kw">let </span>commitment = <span class="self">self
                     </span>.commitments
                     .get(<span class="kw-2">&amp;</span>peer)
-                    .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">&quot;{} sent share before commit&quot;</span>, peer));
+                    .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent share before commit&quot;</span>));
                 <span class="kw">let </span>commit_product: G = commitment
                     .iter()
                     .enumerate()
@@ -1744,9 +1744,9 @@
                     .reduce(|a, b| a + b)
                     .expect(<span class="string">&quot;sums&quot;</span>);
 
-                <span class="macro">assert_eq!</span>(share_product, commit_product, <span class="string">&quot;bad commit from {}&quot;</span>, peer);
+                <span class="macro">assert_eq!</span>(share_product, commit_product, <span class="string">&quot;bad commit from {peer}&quot;</span>);
                 <span class="kw">match </span><span class="self">self</span>.sk_shares.get(<span class="kw-2">&amp;</span>peer) {
-                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != s1 =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{} sent us two shares!&quot;</span>, peer),
+                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != s1 =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent us two shares!&quot;</span>),
                     <span class="kw">_ </span>=&gt; <span class="self">self</span>.sk_shares.insert(peer, s1),
                 };
 
@@ -1766,7 +1766,7 @@
                 <span class="kw">let </span>share = <span class="self">self
                     </span>.sk_shares
                     .get(<span class="kw-2">&amp;</span>peer)
-                    .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">&quot;{} sent extract before share&quot;</span>, peer));
+                    .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent extract before share&quot;</span>));
                 <span class="kw">let </span>share_product = <span class="self">self</span>.gen_g * <span class="kw-2">*</span>share;
                 <span class="kw">let </span>extract_product: G = extract
                     .iter()
@@ -1775,10 +1775,10 @@
                     .reduce(|a, b| a + b)
                     .expect(<span class="string">&quot;sums&quot;</span>);
 
-                <span class="macro">assert_eq!</span>(share_product, extract_product, <span class="string">&quot;bad extract from {}&quot;</span>, peer);
-                <span class="macro">assert_eq!</span>(<span class="self">self</span>.threshold, extract.len(), <span class="string">&quot;wrong degree from {}&quot;</span>, peer);
+                <span class="macro">assert_eq!</span>(share_product, extract_product, <span class="string">&quot;bad extract from {peer}&quot;</span>);
+                <span class="macro">assert_eq!</span>(<span class="self">self</span>.threshold, extract.len(), <span class="string">&quot;wrong degree from {peer}&quot;</span>);
                 <span class="kw">match </span><span class="self">self</span>.pk_shares.get(<span class="kw-2">&amp;</span>peer) {
-                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != extract =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{} sent us two extracts!&quot;</span>, peer),
+                    <span class="prelude-val">Some</span>(old) <span class="kw">if </span><span class="kw-2">*</span>old != extract =&gt; <span class="macro">panic!</span>(<span class="string">&quot;{peer} sent us two extracts!&quot;</span>),
                     <span class="kw">_ </span>=&gt; <span class="self">self</span>.pk_shares.insert(peer, extract),
                 };
 

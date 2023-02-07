@@ -547,7 +547,6 @@
 <a href="#547" id="547">547</a>
 <a href="#548" id="548">548</a>
 <a href="#549" id="549">549</a>
-<a href="#550" id="550">550</a>
 </pre><pre class="rust"><code><span class="comment">// TODO: once user and mint client are merged, make this private again
 </span><span class="kw">pub mod </span>db;
 <span class="kw">pub mod </span>incoming;
@@ -562,7 +561,7 @@
 <span class="kw">use </span>fedimint_api::db::DatabaseTransaction;
 <span class="kw">use </span>fedimint_api::module::TransactionItemAmount;
 <span class="kw">use </span>fedimint_api::task::timeout;
-<span class="kw">use </span>fedimint_api::{Amount, ServerModule};
+<span class="kw">use </span>fedimint_api::Amount;
 <span class="kw">use </span>fedimint_core::modules::ln::common::LightningDecoder;
 <span class="kw">use </span>fedimint_core::modules::ln::config::LightningClientConfig;
 <span class="kw">use </span>fedimint_core::modules::ln::contracts::incoming::IncomingContractOffer;
@@ -573,6 +572,7 @@
 <span class="kw">use </span>fedimint_core::modules::ln::{
     ContractAccount, ContractOutput, Lightning, LightningGateway, LightningInput, LightningOutput,
 };
+<span class="kw">use </span>futures::StreamExt;
 <span class="kw">use </span>lightning_invoice::Invoice;
 <span class="kw">use </span>rand::{CryptoRng, RngCore};
 <span class="kw">use </span>serde::{Deserialize, Serialize};
@@ -594,24 +594,21 @@
 
 <span class="kw">impl </span>ClientModule <span class="kw">for </span>LnClient {
     <span class="kw">const </span>KIND: <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;ln&quot;</span>;
-    <span class="kw">type </span>Decoder = &lt;Lightning <span class="kw">as </span>ServerModule&gt;::Decoder;
+    <span class="kw">type </span>Decoder = LightningDecoder;
     <span class="kw">type </span>Module = Lightning;
 
     <span class="kw">fn </span>decoder(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::Decoder {
         LightningDecoder
     }
 
-    <span class="kw">fn </span>input_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, input: <span class="kw-2">&amp;</span>&lt;<span class="self">Self</span>::Module <span class="kw">as </span>ServerModule&gt;::Input) -&gt; TransactionItemAmount {
+    <span class="kw">fn </span>input_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, input: <span class="kw-2">&amp;</span>LightningInput) -&gt; TransactionItemAmount {
         TransactionItemAmount {
             amount: input.amount,
             fee: <span class="self">self</span>.config.fee_consensus.contract_input,
         }
     }
 
-    <span class="kw">fn </span>output_amount(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        output: <span class="kw-2">&amp;</span>&lt;<span class="self">Self</span>::Module <span class="kw">as </span>ServerModule&gt;::Output,
-    ) -&gt; TransactionItemAmount {
+    <span class="kw">fn </span>output_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, output: <span class="kw-2">&amp;</span>LightningOutput) -&gt; TransactionItemAmount {
         <span class="kw">match </span>output {
             LightningOutput::Contract(account_output) =&gt; TransactionItemAmount {
                 amount: account_output.amount,
@@ -682,7 +679,7 @@
     }
 
     <span class="kw">pub async fn </span>get_contract_account(<span class="kw-2">&amp;</span><span class="self">self</span>, id: ContractId) -&gt; <span class="prelude-ty">Result</span>&lt;ContractAccount&gt; {
-        timeout(Duration::from_secs(<span class="number">10</span>), <span class="self">self</span>.context.api.fetch_contract(id))
+        timeout(Duration::from_secs(<span class="number">30</span>), <span class="self">self</span>.context.api.fetch_contract(id))
             .<span class="kw">await
             </span>.map_err(|_e| LnClientError::Timeout)<span class="question-mark">?
             </span>.map_err(LnClientError::ApiError)
@@ -751,7 +748,7 @@
             .<span class="kw">await
             </span>.find_by_prefix(<span class="kw-2">&amp;</span>OutgoingPaymentKeyPrefix)
             .<span class="kw">await
-            </span>.filter_map(|res| {
+            </span>.filter_map(|res| <span class="kw">async </span>{
                 <span class="kw">let </span>(_key, outgoing_data) = res.expect(<span class="string">&quot;DB error&quot;</span>);
                 <span class="kw">let </span>cancelled = outgoing_data.contract_account.contract.cancelled;
                 <span class="kw">let </span>timed_out =
@@ -762,8 +759,9 @@
                     <span class="prelude-val">None
                 </span>}
             })
-            .collect()
-    }
+            .collect::&lt;Vec&lt;OutgoingContractData&gt;&gt;()
+            .<span class="kw">await
+    </span>}
 
     <span class="kw">pub fn </span>create_refund_outgoing_contract_input&lt;<span class="lifetime">&#39;a</span>&gt;(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -936,7 +934,7 @@
                 },
             )
             .with(
-                <span class="macro">format!</span>(<span class="string">&quot;/module/{}/account&quot;</span>, module_id),
+                <span class="macro">format!</span>(<span class="string">&quot;/module/{module_id}/account&quot;</span>),
                 |mint: Arc&lt;Mutex&lt;FakeFed&lt;Lightning&gt;&gt;&gt;, contract: ContractId| <span class="kw">async move </span>{
                     <span class="prelude-val">Ok</span>(mint
                         .lock()

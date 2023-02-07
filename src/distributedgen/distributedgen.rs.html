@@ -378,7 +378,7 @@
             password,
         } =&gt; {
             <span class="kw">let </span>config_str = create_cert(dir_out_path, p2p_url, api_url, name, password)<span class="question-mark">?</span>;
-            <span class="prelude-val">Ok</span>(<span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, config_str))
+            <span class="prelude-val">Ok</span>(<span class="macro">println!</span>(<span class="string">&quot;{config_str}&quot;</span>))
         }
         Command::Run {
             dir_out_path,
@@ -416,7 +416,7 @@
             encrypted_json_write(<span class="kw-2">&amp;</span>server.private, <span class="kw-2">&amp;</span>key, dir_out_path.join(PRIVATE_CONFIG))<span class="question-mark">?</span>;
             write_nonprivate_configs(<span class="kw-2">&amp;</span>server, dir_out_path, <span class="kw-2">&amp;</span>module_config_gens)
         }
-        Command::VersionHash =&gt; <span class="prelude-val">Ok</span>(<span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, CODE_VERSION)),
+        Command::VersionHash =&gt; <span class="prelude-val">Ok</span>(<span class="macro">println!</span>(<span class="string">&quot;{CODE_VERSION}&quot;</span>)),
         Command::ConfigDecrypt {
             in_file,
             out_file,

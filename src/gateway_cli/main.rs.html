@@ -460,7 +460,7 @@
                     serde_json::from_str(<span class="kw-2">&amp;</span>text).expect(<span class="string">&quot;failed to parse response as json&quot;</span>);
                 <span class="kw">let </span>formatted =
                     serde_json::to_string_pretty(<span class="kw-2">&amp;</span>val).expect(<span class="string">&quot;failed to format response&quot;</span>);
-                <span class="macro">println!</span>(<span class="string">&quot;\n{}&quot;</span>, formatted)
+                <span class="macro">println!</span>(<span class="string">&quot;\n{formatted}&quot;</span>)
             }
         }
         <span class="kw">_ </span>=&gt; {

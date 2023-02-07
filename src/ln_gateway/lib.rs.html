@@ -467,6 +467,12 @@
 <a href="#467" id="467">467</a>
 <a href="#468" id="468">468</a>
 <a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
 </pre><pre class="rust"><code><span class="kw">pub mod </span>actor;
 <span class="kw">pub mod </span>client;
 <span class="kw">pub mod </span>cln;
@@ -742,8 +748,14 @@
         // We use a random federation as the default (works because we only have one federation registered)
         //
         // TODO: Use subscribe intercept htlc streams to avoid actor selection with every intercepted htlc!
-        </span><span class="self">self</span>.actors.lock().<span class="kw">await</span>.values().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()[<span class="number">0</span>]
-            .buy_preimage_internal(<span class="kw-2">&amp;</span>payment_hash, <span class="kw-2">&amp;</span>invoice_amount)
+        </span><span class="kw">let </span>lock = <span class="kw-2">&amp;</span><span class="self">self</span>.actors.lock().<span class="kw">await</span>;
+        <span class="kw">let </span>gateway_actor = lock.values().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()[<span class="number">0</span>];
+        gateway_actor
+            .pay_invoice_buy_preimage_finalize(actor::BuyPreimage::Internal(
+                gateway_actor
+                    .buy_preimage_internal(<span class="kw-2">&amp;</span>payment_hash, <span class="kw-2">&amp;</span>invoice_amount)
+                    .<span class="kw">await</span><span class="question-mark">?</span>,
+            ))
             .<span class="kw">await
     </span>}
 
@@ -931,7 +943,7 @@
 
 <span class="kw">impl </span>IntoResponse <span class="kw">for </span>LnGatewayError {
     <span class="kw">fn </span>into_response(<span class="self">self</span>) -&gt; Response {
-        <span class="kw">let </span><span class="kw-2">mut </span>err = Cow::&lt;<span class="lifetime">&#39;static</span>, str&gt;::Owned(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="self">self</span>)).into_response();
+        <span class="kw">let </span><span class="kw-2">mut </span>err = Cow::&lt;<span class="lifetime">&#39;static</span>, str&gt;::Owned(<span class="macro">format!</span>(<span class="string">&quot;{self:?}&quot;</span>)).into_response();
         <span class="kw-2">*</span>err.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
         err
     }

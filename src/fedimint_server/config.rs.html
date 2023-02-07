@@ -822,11 +822,15 @@
 <a href="#822" id="822">822</a>
 <a href="#823" id="823">823</a>
 <a href="#824" id="824">824</a>
+<a href="#825" id="825">825</a>
+<a href="#826" id="826">826</a>
+<a href="#827" id="827">827</a>
+<a href="#828" id="828">828</a>
 </pre><pre class="rust"><code><span class="kw">use </span>std::collections::{BTreeMap, BTreeSet, HashMap};
 <span class="kw">use </span>std::net::SocketAddr;
 <span class="kw">use </span>std::time::Duration;
 
-<span class="kw">use </span>anyhow::{bail, format_err};
+<span class="kw">use </span>anyhow::{bail, format_err, Context};
 <span class="kw">use </span>bitcoin::hashes::sha256;
 <span class="kw">use </span>bitcoin::hashes::sha256::HashEngine;
 <span class="kw">use </span>fedimint_api::cancellable::{Cancellable, Cancelled};
@@ -854,6 +858,7 @@
 <span class="kw">use </span><span class="kw">crate</span>::fedimint_api::encoding::Encodable;
 <span class="kw">use </span><span class="kw">crate</span>::fedimint_api::BitcoinHash;
 <span class="kw">use </span><span class="kw">crate</span>::fedimint_api::NumPeers;
+<span class="kw">use </span><span class="kw">crate</span>::logging::{LOG_NET_PEER, LOG_NET_PEER_DKG};
 <span class="kw">use </span><span class="kw">crate</span>::net::connect::TlsConfig;
 <span class="kw">use </span><span class="kw">crate</span>::net::connect::{parse_host_port, Connector};
 <span class="kw">use </span><span class="kw">crate</span>::net::peers::NetworkConfig;
@@ -1312,7 +1317,7 @@
                         done_peers.insert(peer_id);
                     },
                     <span class="prelude-val">Ok</span>((peer_id, msg)) =&gt; {
-                        <span class="macro">error!</span>(%peer_id, <span class="question-mark">?</span>msg, <span class="string">&quot;Received incorrect message after dkg was supposed to be finished. Probably dkg multiplexing bug.&quot;</span>);
+                        <span class="macro">error!</span>(target: LOG_NET_PEER_DKG, %peer_id, <span class="question-mark">?</span>msg, <span class="string">&quot;Received incorrect message after dkg was supposed to be finished. Probably dkg multiplexing bug.&quot;</span>);
                     },
                     <span class="prelude-val">Err</span>(Cancelled) =&gt; {<span class="comment">/* ignore shutdown for time being, we&#39;ll timeout soon anyway */</span>},
                 }
@@ -1320,7 +1325,7 @@
         })
         .<span class="kw">await
         </span>{
-            <span class="macro">error!</span>(<span class="string">&quot;Timeout waiting for dkg completion confirmation from other peers&quot;</span>);
+            <span class="macro">error!</span>(target: LOG_NET_PEER_DKG, <span class="string">&quot;Timeout waiting for dkg completion confirmation from other peers&quot;</span>);
         };
 
         <span class="kw">let </span>server = ServerConfig::from(
@@ -1333,7 +1338,10 @@
             module_cfgs,
         );
 
-        <span class="macro">info!</span>(<span class="string">&quot;Distributed key generation has completed successfully!&quot;</span>);
+        <span class="macro">info!</span>(
+            target: LOG_NET_PEER,
+            <span class="string">&quot;Distributed key generation has completed successfully!&quot;
+        </span>);
 
         <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(server))
     }
@@ -1511,7 +1519,7 @@
         max_denomination: Amount,
         base_port: u16,
         federation_name: <span class="kw-2">&amp;</span>str,
-    ) -&gt; HashMap&lt;PeerId, ServerConfigParams&gt; {
+    ) -&gt; anyhow::Result&lt;HashMap&lt;PeerId, ServerConfigParams&gt;&gt; {
         <span class="kw">let </span>keys: HashMap&lt;PeerId, (rustls::Certificate, rustls::PrivateKey)&gt; = peers
             .iter()
             .map(|peer| {
@@ -1524,7 +1532,7 @@
             .iter()
             .map(|peer| {
                 <span class="kw">let </span>peer_port = base_port + u16::from(<span class="kw-2">*</span>peer) * <span class="number">10</span>;
-                <span class="kw">let </span>p2p_url = <span class="macro">format!</span>(<span class="string">&quot;ws://127.0.0.1:{}&quot;</span>, peer_port);
+                <span class="kw">let </span>p2p_url = <span class="macro">format!</span>(<span class="string">&quot;ws://127.0.0.1:{peer_port}&quot;</span>);
                 <span class="kw">let </span>api_url = <span class="macro">format!</span>(<span class="string">&quot;ws://127.0.0.1:{}&quot;</span>, peer_port + <span class="number">1</span>);
 
                 <span class="kw">let </span>params: PeerServerParams = PeerServerParams {
@@ -1540,12 +1548,12 @@
         peers
             .iter()
             .map(|peer| {
-                <span class="kw">let </span>bind_p2p = parse_host_port(peer_params[peer].clone().p2p_url);
-                <span class="kw">let </span>bind_api = parse_host_port(peer_params[peer].clone().api_url);
+                <span class="kw">let </span>bind_p2p = parse_host_port(peer_params[peer].clone().p2p_url)<span class="question-mark">?</span>;
+                <span class="kw">let </span>bind_api = parse_host_port(peer_params[peer].clone().api_url)<span class="question-mark">?</span>;
 
                 <span class="kw">let </span>params: ServerConfigParams = <span class="self">Self</span>::gen_params(
-                    bind_p2p.parse().expect(<span class="string">&quot;Should parse&quot;</span>),
-                    bind_api.parse().expect(<span class="string">&quot;Should parse&quot;</span>),
+                    bind_p2p.parse().context(<span class="string">&quot;when parsing bind_p2p&quot;</span>)<span class="question-mark">?</span>,
+                    bind_api.parse().context(<span class="string">&quot;when parsing bind_api&quot;</span>)<span class="question-mark">?</span>,
                     keys[peer].<span class="number">1</span>.clone(),
                     <span class="kw-2">*</span>peer,
                     max_denomination,
@@ -1554,9 +1562,9 @@
                     bitcoin::network::constants::Network::Regtest,
                     <span class="number">10</span>,
                 );
-                (<span class="kw-2">*</span>peer, params)
+                <span class="prelude-val">Ok</span>((<span class="kw-2">*</span>peer, params))
             })
-            .collect()
+            .collect::&lt;anyhow::Result&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;&gt;()
     }
 }
 

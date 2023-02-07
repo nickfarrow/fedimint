@@ -53,7 +53,7 @@
     <span class="kw">pub fn </span>serialize&lt;T: Serialize, S: Serializer&gt;(x: <span class="kw-2">&amp;</span>T, s: S) -&gt; <span class="prelude-ty">Result</span>&lt;S::Ok, S::Error&gt; {
         <span class="kw">if </span>s.is_human_readable() {
             <span class="kw">let </span>bytes =
-                bincode::serialize(x).map_err(|e| serde::ser::Error::custom(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, e)))<span class="question-mark">?</span>;
+                bincode::serialize(x).map_err(|e| serde::ser::Error::custom(<span class="macro">format!</span>(<span class="string">&quot;{e:?}&quot;</span>)))<span class="question-mark">?</span>;
             s.serialize_str(<span class="kw-2">&amp;</span>bytes.to_hex())
         } <span class="kw">else </span>{
             Serialize::serialize(x, s)
@@ -64,7 +64,7 @@
         <span class="kw">if </span>d.is_human_readable() {
             <span class="kw">let </span>hex_str: Cow&lt;str&gt; = Deserialize::deserialize(d)<span class="question-mark">?</span>;
             <span class="kw">let </span>bytes = Vec::from_hex(<span class="kw-2">&amp;</span>hex_str).map_err(serde::de::Error::custom)<span class="question-mark">?</span>;
-            bincode::deserialize(<span class="kw-2">&amp;</span>bytes).map_err(|e| serde::de::Error::custom(<span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, e)))
+            bincode::deserialize(<span class="kw-2">&amp;</span>bytes).map_err(|e| serde::de::Error::custom(<span class="macro">format!</span>(<span class="string">&quot;{e:?}&quot;</span>)))
         } <span class="kw">else </span>{
             Deserialize::deserialize(d)
         }

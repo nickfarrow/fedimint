@@ -23,30 +23,42 @@
 <a href="#23" id="23">23</a>
 <a href="#24" id="24">24</a>
 <a href="#25" id="25">25</a>
+<a href="#26" id="26">26</a>
+<a href="#27" id="27">27</a>
+<a href="#28" id="28">28</a>
+<a href="#29" id="29">29</a>
+<a href="#30" id="30">30</a>
+<a href="#31" id="31">31</a>
 </pre><pre class="rust"><code><span class="kw">pub mod </span>bitcoind;
 <span class="kw">pub mod </span>fixtures;
 
+<span class="kw">use </span>async_trait::async_trait;
 <span class="kw">use </span>bitcoin::{Address, Transaction};
 <span class="kw">use </span>fedimint_api::Amount;
 <span class="kw">use </span>fedimint_wallet::txoproof::TxOutProof;
 
-<span class="kw">pub trait </span>BitcoinTest {
+<span class="attr">#[async_trait]
+</span><span class="kw">pub trait </span>BitcoinTest {
+    <span class="doccomment">/// Make the underlying instance act as if it was exclusively available
+    /// for the existance of the returned guard.
+    </span><span class="kw">async fn </span>lock_exclusive(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Box&lt;<span class="kw">dyn </span>BitcoinTest&gt;;
+
     <span class="doccomment">/// Mines a given number of blocks
-    </span><span class="kw">fn </span>mine_blocks(<span class="kw-2">&amp;</span><span class="self">self</span>, block_num: u64);
+    </span><span class="kw">async fn </span>mine_blocks(<span class="kw-2">&amp;</span><span class="self">self</span>, block_num: u64);
 
     <span class="doccomment">/// Send some bitcoin to an address then mine a block to confirm it.
     /// Returns the proof that the transaction occurred.
-    </span><span class="kw">fn </span>send_and_mine_block(
+    </span><span class="kw">async fn </span>send_and_mine_block(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         address: <span class="kw-2">&amp;</span>Address,
         amount: bitcoin::Amount,
     ) -&gt; (TxOutProof, Transaction);
 
     <span class="doccomment">/// Returns a new address.
-    </span><span class="kw">fn </span>get_new_address(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Address;
+    </span><span class="kw">async fn </span>get_new_address(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Address;
 
     <span class="doccomment">/// Mine a block to include any pending transactions then get the amount received to an address
-    </span><span class="kw">fn </span>mine_block_and_get_received(<span class="kw-2">&amp;</span><span class="self">self</span>, address: <span class="kw-2">&amp;</span>Address) -&gt; Amount;
+    </span><span class="kw">async fn </span>mine_block_and_get_received(<span class="kw-2">&amp;</span><span class="self">self</span>, address: <span class="kw-2">&amp;</span>Address) -&gt; Amount;
 }
 </code></pre></div>
 </section></main><div id="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="fedimint_testing" data-themes="" data-resource-suffix="" data-rustdoc-version="1.69.0-nightly (e1eaa2d5d 2023-02-06)" data-search-js="search-28136cea55c34037.js" data-settings-js="settings-f0c5c39777a9a2f6.js" data-settings-css="settings-0bcba95ff279c1db.css" ></div></body></html>

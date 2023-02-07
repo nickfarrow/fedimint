@@ -36,7 +36,7 @@
             // by giving it a prefix (0x0123456)
             </span>String::from(<span class="string">&quot;01234569afbe457afa1d2683a099c7af48a523c1&quot;</span>)
         };
-        <span class="macro">println!</span>(<span class="string">&quot;cargo:rustc-env=GIT_HASH={}&quot;</span>, git_hash);
+        <span class="macro">println!</span>(<span class="string">&quot;cargo:rustc-env=GIT_HASH={git_hash}&quot;</span>);
     }
     <span class="macro">println!</span>(<span class="string">&quot;cargo:rerun-if-env-changed=GIT_HASH&quot;</span>);
 }

@@ -1066,7 +1066,7 @@
             <span class="prelude-val">Ok</span>(v) =&gt; v,
             <span class="prelude-val">Err</span>(e) =&gt; {
                 <span class="kw">let </span>cli_error = CliError::from(err, msg, <span class="prelude-val">Some</span>(Box::new(e)));
-                <span class="macro">eprintln!</span>(<span class="string">&quot;{}&quot;</span>, cli_error);
+                <span class="macro">eprintln!</span>(<span class="string">&quot;{cli_error}&quot;</span>);
                 exit(<span class="number">1</span>);
             }
         }
@@ -1168,10 +1168,10 @@
 
         <span class="kw">match </span>cli_result {
             <span class="prelude-val">Ok</span>(output) =&gt; {
-                <span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, output);
+                <span class="macro">println!</span>(<span class="string">&quot;{output}&quot;</span>);
             }
             <span class="prelude-val">Err</span>(err) =&gt; {
-                <span class="macro">eprintln!</span>(<span class="string">&quot;{}&quot;</span>, err);
+                <span class="macro">eprintln!</span>(<span class="string">&quot;{err}&quot;</span>);
                 exit(<span class="number">1</span>);
             }
         }
@@ -1347,7 +1347,7 @@
             description,
             expiry_time,
         } =&gt; client
-            .generate_invoice(amount, description, <span class="kw-2">&amp;mut </span>rng, expiry_time)
+            .generate_confirmed_invoice(amount, description, <span class="kw-2">&amp;mut </span>rng, expiry_time)
             .<span class="kw">await
             </span>.transform(
                 |confirmed_invoice| CliOutput::LnInvoice {

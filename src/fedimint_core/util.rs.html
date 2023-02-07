@@ -112,11 +112,11 @@
         <span class="macro">write!</span>(f, <span class="string">&quot;{}://&quot;</span>, <span class="self">self</span>.<span class="number">0</span>.scheme())<span class="question-mark">?</span>;
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(host) = <span class="self">self</span>.<span class="number">0</span>.host_str() {
-            <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, host)<span class="question-mark">?</span>;
+            <span class="macro">write!</span>(f, <span class="string">&quot;{host}&quot;</span>)<span class="question-mark">?</span>;
         }
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(port) = <span class="self">self</span>.<span class="number">0</span>.port() {
-            <span class="macro">write!</span>(f, <span class="string">&quot;:{}&quot;</span>, port)<span class="question-mark">?</span>;
+            <span class="macro">write!</span>(f, <span class="string">&quot;:{port}&quot;</span>)<span class="question-mark">?</span>;
         }
 
         <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>.<span class="number">0</span>.path())<span class="question-mark">?</span>;
@@ -156,13 +156,13 @@
             <span class="kw">let </span>url = Url::parse(url_str).unwrap();
             <span class="kw">let </span>sanitized_url = SanitizedUrl::new_borrowed(<span class="kw-2">&amp;</span>url);
 
-            <span class="kw">let </span>sanitized_display = <span class="macro">format!</span>(<span class="string">&quot;{}&quot;</span>, sanitized_url);
+            <span class="kw">let </span>sanitized_display = <span class="macro">format!</span>(<span class="string">&quot;{sanitized_url}&quot;</span>);
             <span class="macro">assert_eq!</span>(
                 sanitized_display, sanitized_display_expected,
                 <span class="string">&quot;Display implementation out of spec&quot;
             </span>);
 
-            <span class="kw">let </span>sanitized_debug = <span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, sanitized_url);
+            <span class="kw">let </span>sanitized_debug = <span class="macro">format!</span>(<span class="string">&quot;{sanitized_url:?}&quot;</span>);
             <span class="macro">assert_eq!</span>(
                 sanitized_debug, sanitized_debug_expected,
                 <span class="string">&quot;Debug implementation out of spec&quot;

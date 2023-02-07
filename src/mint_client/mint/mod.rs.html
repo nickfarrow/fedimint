@@ -1135,17 +1135,14 @@
         MintDecoder
     }
 
-    <span class="kw">fn </span>input_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, input: <span class="kw-2">&amp;</span>&lt;<span class="self">Self</span>::Module <span class="kw">as </span>ServerModule&gt;::Input) -&gt; TransactionItemAmount {
+    <span class="kw">fn </span>input_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, input: <span class="kw-2">&amp;</span>MintInput) -&gt; TransactionItemAmount {
         TransactionItemAmount {
             amount: input.total_amount(),
             fee: <span class="self">self</span>.config.fee_consensus.note_spend_abs * (input.count_items() <span class="kw">as </span>u64),
         }
     }
 
-    <span class="kw">fn </span>output_amount(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        output: <span class="kw-2">&amp;</span>&lt;<span class="self">Self</span>::Module <span class="kw">as </span>ServerModule&gt;::Output,
-    ) -&gt; TransactionItemAmount {
+    <span class="kw">fn </span>output_amount(<span class="kw-2">&amp;</span><span class="self">self</span>, output: <span class="kw-2">&amp;</span>MintOutput) -&gt; TransactionItemAmount {
         TransactionItemAmount {
             amount: output.total_amount(),
             fee: <span class="self">self</span>.config.fee_consensus.note_issuance_abs * (output.count_items() <span class="kw">as </span>u64),
@@ -1305,7 +1302,8 @@
                 (key.amount, spendable_note)
             })
             .collect()
-    }
+            .<span class="kw">await
+    </span>}
 
     <span class="doccomment">/// Get available spendable notes with a db transaction already opened
     </span><span class="kw">pub async fn </span>get_available_notes(
@@ -1319,7 +1317,8 @@
                 (key.amount, spendable_note)
             })
             .collect()
-    }
+            .<span class="kw">await
+    </span>}
 
     <span class="kw">pub async fn </span>get_next_note_index(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -1456,7 +1455,8 @@
                 (outpoint, cfd)
             })
             .collect()
-    }
+            .<span class="kw">await
+    </span>}
 
     <span class="kw">pub async fn </span>fetch_all_notes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;<span class="prelude-ty">Result</span>&lt;OutPoint&gt;&gt; {
         <span class="kw">let </span>active_issuances = <span class="kw-2">&amp;</span><span class="self">self</span>.list_active_issuances().<span class="kw">await</span>;
@@ -1874,7 +1874,7 @@
     }
 
     <span class="attr">#[allow(clippy::needless_collect)]
-    #[tokio::test]
+    #[tokio::test(flavor = <span class="string">&quot;multi_thread&quot;</span>)]
     </span><span class="kw">async fn </span>test_parallel_issuance() {
         <span class="kw">const </span>ITERATIONS: usize = <span class="number">10_000</span>;
 
